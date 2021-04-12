@@ -41,6 +41,8 @@ func indexGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	comments, err := client.LRange("comments", 0, 10).Result()
 	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Internal Server Error"))
 		return
 	}
 	templates.ExecuteTemplate(w, "index.html", comments)
@@ -49,7 +51,15 @@ func indexGetHandler(w http.ResponseWriter, r *http.Request) {
 func indexPostHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	comment := r.PostForm.Get("comment")
-	client.LPush("comments", comment)
+	err := client.LPush("comments", comment).Err()
+	// Error handling if comment don't get submitted to db
+	// let user know the status in case of error
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Internal Server Error"))
+		return
+	}
+	//client.LPush("comments", comment)
 	http.Redirect(w, r, "/", 302)
 }
 
@@ -57,27 +67,44 @@ func loginGetHandler(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "login.html", nil)
 }
 
+//  Post loginPostHandler
 func loginPostHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	username := r.PostForm.Get("username")
 	password := r.PostForm.Get("password")
 	hash, err := client.Get("user:" + username).Bytes()
-	if err != nil {
+	if err == redis.Nil {
+		templates.ExecuteTemplate(w, "login.html", "unknown user")
+		return
+	} else if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Internal Server Error"))
 		return
 	}
+	// if db return nil value for this user
+	// user don't exist
+	//if err != nil {
+	//	return
+	//}
 	err = bcrypt.CompareHashAndPassword(hash, []byte(password))
-
+	if err != nil {
+		templates.ExecuteTemplate(w, "login.html", "invalid login credentials")
+		return
+	}
+	// store session as cookie
 	session, _ := store.Get(r, "session")
 	session.Values["username"] = username
 	session.Save(r, w)
 	http.Redirect(w, r, "/", 302)
 }
 
+// Get registerGetHandler to open /register page
 func registerGetHandler(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "register.html", nil)
 
 }
 
+// Post registerGetHandler to submit /register page
 func registerPostHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	username := r.PostForm.Get("username")
@@ -85,9 +112,19 @@ func registerPostHandler(w http.ResponseWriter, r *http.Request) {
 	cost := bcrypt.DefaultCost
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), cost)
 	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Internal Server Error"))
 		return
 	}
-	client.Set("user:"+username, hash, 0)
+	if err != nil {
+		return
+	}
+	err = client.Set("user:"+username, hash, 0).Err()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Internal Server Error"))
+		return
+	}
 	http.Redirect(w, r, "/login", 302)
 
 }
