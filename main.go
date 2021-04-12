@@ -6,9 +6,11 @@ import (
 
 	"github.com/go-redis/redis"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
 )
 
 var client *redis.Client
+var store = sessions.NewCookieStore([]byte("t0p-s3cr3t-c00k!3"))
 var templates *template.Template
 
 func main() {
@@ -19,6 +21,8 @@ func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/", indexGetHandler).Methods("GET")
 	r.HandleFunc("/", indexPostHandler).Methods("POST")
+	r.HandleFunc("/login", indexGetHandler).Methods("GET")
+	r.HandleFunc("/login", indexPostHandler).Methods("POST")
 	fs := http.FileServer(http.Dir("./static/"))
 	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", fs))
 	http.Handle("/", r)
@@ -38,4 +42,14 @@ func indexPostHandler(w http.ResponseWriter, r *http.Request) {
 	comment := r.PostForm.Get("comment")
 	client.LPush("comments", comment)
 	http.Redirect(w, r, "/", 302)
+}
+
+func loginGetHandler(w http.ResponseWriter, r *http.Request) {
+
+	templates.ExecuteTemplate(w, "login.html", nil)
+
+}
+
+func loginPostHandler(w http.ResponseWriter, r *http.Request) {
+
 }
